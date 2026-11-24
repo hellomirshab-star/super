@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard</title>
+<style>
+  :root { --bg:#000; --fg:#fff; --mut:#9a9a9a; --line:#2a2a2a; --card:#0d0d0d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,Arial,sans-serif; }
+  .wrap { max-width:900px; margin:0 auto; padding:24px 16px 60px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  p.sub { color:var(--mut); margin:0 0 20px; }
+  .tabs { display:flex; gap:8px; margin-bottom:20px; }
+  .tabs button { background:none; color:var(--mut); border:1px solid var(--line); padding:8px 16px; border-radius:8px; cursor:pointer; }
+  .tabs button.on { color:#000; background:#fff; border-color:#fff; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
+  label { display:block; margin:14px 0 6px; font-size:14px; }
+  input, textarea { width:100%; background:#000; color:#fff; border:1px solid #444; border-radius:8px; padding:10px; font:inherit; }
+  input:focus, textarea:focus { outline:none; border-color:#fff; }
+  textarea { min-height:90px; resize:vertical; }
+  .btn { margin-top:18px; background:#fff; color:#000; border:0; padding:10px 22px; border-radius:8px; font-weight:600; cursor:pointer; }
+  .msg { margin-top:12px; color:var(--mut); font-size:14px; }
+  .stats { display:flex; gap:12px; margin-bottom:16px; }
+  .stat { flex:1; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .stat b { font-size:26px; display:block; }
+  .tablebox { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; }
+  th, td { text-align:left; padding:10px; border-bottom:1px solid var(--line); font-size:14px; vertical-align:top; }
+  th { color:var(--mut); font-weight:500; }
+  .hide { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Dashboard</h1>
+  <p class="sub">Add details and view all entries</p>
+
+  <div class="tabs">
+    <button id="tabForm" class="on">Form</button>
+    <button id="tabDash">Dashboard</button>
+  </div>
+
+  <!-- FORM -->
+  <div id="formView" class="card">
+    <label for="name">Name</label>
+    <input id="name" placeholder="Full name">
+    <label for="address">Address</label>
+    <textarea id="address" placeholder="Full address"></textarea>
+    <button class="btn" id="send">Submit</button>
+    <div class="msg" id="formMsg"></div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashView" class="hide">
+    <div class="card" id="keyBox">
+      <label for="key">Admin key</label>
+      <input id="key" type="password" placeholder="Enter admin key">
+      <button class="btn" id="load">View entries</button>
+      <div class="msg" id="dashMsg"></div>
+    </div>
+    <div id="data" class="hide">
+      <div class="stats">
+        <div class="stat"><span style="color:var(--mut)">Total entries</span><b id="count">0</b></div>
+      </div>
+      <input id="search" placeholder="Search name or address...">
+      <div class="tablebox">
+        <table>
+          <thead><tr><th>#</th><th>Date</th><th>Name</th><th>Address</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // PASTE your Google Apps Script Web App URL here
+  const API_URL = "PASTE_YOUR_WEB_APP_URL_HERE";
+
+  const $ = id => document.getElementById(id);
+  let entries = [];
+
+  $("tabForm").onclick = () => show(true);
+  $("tabDash").onclick = () => show(false);
+  function show(form) {
+    $("formView").classList.toggle("hide", !form);
+    $("dashView").classList.toggle("hide", form);
+    $("tabForm").classList.toggle("on", form);
+    $("tabDash").classList.toggle("on", !form);
+  }
+
+  $("send").onclick = async () => {
+    const name = $("name").value.trim(), address = $("address").value.trim();
+    if (!name || !address) { $("formMsg").textContent = "Name and address are required."; return; }
+    $("formMsg").textContent = "Sending...";
+    try {
+      await fetch(API_URL, { method:"POST", mode:"no-cors",
+        headers:{ "Content-Type":"text/plain" },
+        body: JSON.stringify({ name, address }) });
+      $("formMsg").textContent = "Submitted. Thank you!";
+      $("name").value = ""; $("address").value = "";
+    } catch (e) { $("formMsg").textContent = "Failed. Try again."; }
+  };
+
+  $("load").onclick = async () => {
+    $("dashMsg").textContent = "Loading...";
+    try {
+      const r = await fetch(API_URL + "?key=" + encodeURIComponent($("key").value));
+      const j = await r.json();
+      if (j.error) { $("dashMsg").textContent = "Wrong key."; return; }
+      entries = j.rows; $("keyBox").classList.add("hide"); $("data").classList.remove("hide");
+      render();
+    } catch (e) { $("dashMsg").textContent = "Could not load data."; }
+  };
+
+  $("search").oninput = render;
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+  function render() {
+    const q = $("search").value.toLowerCase();
+    const list = entries.filter(e => (e.name + " " + e.address).toLowerCase().includes(q));
+    $("count").textContent = entries.length;
+    $("rows").innerHTML = list.map((e, i) =>
+      `<tr><td>${i+1}</td><td>${esc(new Date(e.date).toLocaleDateString())}</td><td>${esc(e.name)}</td><td>${esc(e.address)}</td></tr>`
+    ).join("") || `<tr><td colspan="4" style="color:var(--mut)">No entries</td></tr>`;
+  }
+</script>
+</body>
+</html>
